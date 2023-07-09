@@ -3,8 +3,10 @@
 - hosts: all
   become: yes
   vars:
-    version: "3.42.0-01"
-    dedicated_ram: "5700m"
+    version: "3.57.0-01"
+    dedicated_ram: "3800m"
+    application_port: 1080
+    context_path: /
     nexus_systemd: |-
       [Unit]
       Description=nexus service
@@ -67,19 +69,52 @@
         state: present
         regexp: '^-Xms'
         line: "-Xms{{ dedicated_ram }}"
-      notify: reload_systemd
-    - name: set ram usage
+      notify: restart_systemd
+    - name: set ram usage max
       lineinfile:
         path: "/opt/nexus-{{ version }}/bin/nexus.vmoptions"
         state: present
         regexp: '^-Xmx'
         line: "-Xmx{{ dedicated_ram }}"
-      notify: reload_systemd
+      notify: restart_systemd
+
+      #bugfix: https://support.sonatype.com/hc/en-us/articles/213464868-Nexus-Repository-2-startup-fails-with-Could-not-lock-User-prefs-Couldn-t-flush-user-prefs-Couldn-t-get-file-lock-
+    - name: set user root
+      lineinfile:
+        path: "/opt/nexus-{{ version }}/bin/nexus.vmoptions"
+        state: present
+        regexp: '^-Djava.util.prefs.userRoot'
+        line: "-Djava.util.prefs.userRoot=../sonatype-work/nexus3/"
+      notify: restart_systemd
+    - name: set app_port
+      lineinfile:
+        path: "/opt/nexus-{{ version }}/etc/nexus-default.properties"
+        state: present
+        regexp: '^application-port='
+        line: "application-port={{ application_port }}"
+      notify: restart_systemd
+    - name: set context_path
+      lineinfile:
+        path: "/opt/nexus-{{ version }}/etc/nexus-default.properties"
+        state: present
+        regexp: '^nexus-context-path='
+        line: "nexus-context-path={{ context_path }}"
+      notify: restart_systemd
     - name: create systemd unit file
       copy:
         content: "{{ nexus_systemd  }}"
         dest: "/etc/systemd/system/nexus.service"
       notify: reload_systemd
+    - name: Read default password
+      slurp:
+        src: /opt/sonatype-work/nexus3/admin.password
+      register: passwd_content
+    - name: Print Connection info
+      debug:
+        msg: "URL: {{ ansible_host }}:{{ application_port }}{{ context_path }}"
+    - name: Print default password
+      debug:
+        msg: "Default password: {{ passwd_content.content | b64decode }}"
   handlers:
     - name: reload_systemd
       systemd:
@@ -87,3 +122,7 @@
         state: started
         enabled: yes
         daemon_reload: yes
+    - name: restart_systemd
+      systemd:
+        name: nexus
+        state: restarted
