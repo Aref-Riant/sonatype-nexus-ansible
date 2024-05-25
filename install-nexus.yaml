@@ -20,6 +20,7 @@
       User=nexus
       Restart=on-abort
       Environment="JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/"
+      AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
       [Install]
       WantedBy=multi-user.target
 
